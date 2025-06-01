@@ -1,2 +1,1 @@
-web: python tradingview_zerodha_ver5.py
-
+python tradingview_zerodha_sin5_ver1.py
