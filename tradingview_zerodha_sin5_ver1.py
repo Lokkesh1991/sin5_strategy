@@ -1,4 +1,4 @@
-print("🚀 Starting tradingview_zerodha_sin5.py...")
+print("\U0001F680 Starting tradingview_zerodha_sin5.py...")
 
 from flask import Flask, request, jsonify
 from kiteconnect import KiteConnect
@@ -48,10 +48,7 @@ def get_kite_client():
         logging.error(f"❌ Failed to initialize Kite client: {str(e)}")
         return None
 
-# === Helper ===
-def is_gold_symbol(symbol):
-    return "GOLD" in symbol.upper()
-
+# === Helpers ===
 lot_size_cache = {}
 def get_lot_size(kite, tradingsymbol):
     if tradingsymbol in lot_size_cache:
@@ -97,42 +94,35 @@ def get_active_contract(symbol):
     else:
         return f"{symbol}{str(current_year)[2:]}{datetime(current_year, current_month, 1).strftime('%b').upper()}FUT"
 
-def auto_rollover_positions(kite, symbol):
-    if PAPER_TRADING:
-        return
-    # Same logic as before (not needed for paper trades)
-
-def generate_mock_trade(symbol, signal, qty, price=None):
+def log_trade_to_csv(symbol, signal, qty, price):
     now = datetime.now()
-    price = price or round(random.uniform(700, 750), 2)
     trade_id = f"26{random.randint(1000000000, 9999999999)}"
     order_id = str(random.randint(100000, 999999))
-
     row = [
-        symbol,                           # Symbol
-        now.strftime('%Y-%m-%d'),         # Trade Date
-        "NSE",                            # Exchange
-        "FO",                             # Segment
-        signal.lower(),                  # buy/sell
-        "FALSE",                          # Order Type
-        qty,                              # Quantity
-        price,                            # Price
-        trade_id,                         # Trade ID
-        order_id,                         # Order ID
-        now.strftime('%Y-%m-%dT%H:%M:%S'),# Trade Time
-        now.strftime('%Y-%m-%d')          # Log Date
+        symbol,
+        now.strftime('%Y-%m-%d'),
+        "NSE",
+        "FO",
+        signal.lower(),
+        "FALSE",
+        qty,
+        price,
+        trade_id,
+        order_id,
+        now.strftime('%Y-%m-%dT%H:%M:%S'),
+        now.strftime('%Y-%m-%d')
     ]
     with open("logs/paper_trades.csv", mode='a', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(row)
-    logging.info(f"📄 Paper trade logged: {row}")
+    logging.info(f"📄 Logged to paper_trades.csv: {row}")
+
+def generate_mock_trade(symbol, signal, qty):
+    price = round(random.uniform(700, 750), 2)
+    log_trade_to_csv(symbol, signal, qty, price)
 
 def enter_position(kite, symbol, side):
-    lot_qty = 1
-    try:
-        lot_qty = get_lot_size(kite, symbol)
-    except:
-        pass
+    lot_qty = get_lot_size(kite, symbol) if not PAPER_TRADING else 1
 
     if PAPER_TRADING:
         generate_mock_trade(symbol, side, lot_qty)
@@ -150,6 +140,7 @@ def enter_position(kite, symbol, side):
             order_type="MARKET"
         )
         logging.info(f"✅ Entered {side} for {symbol} with quantity={lot_qty}")
+        log_trade_to_csv(symbol, side, lot_qty, price="real")
     except Exception as e:
         logging.error(f"❌ Entry failed: {e}")
 
@@ -196,10 +187,8 @@ def webhook():
         signal = data.get("signal", "").lower() or data.get("message", "").lower()
         signal = signal.upper()
 
-        if signal == "BUY":
-            signal = "LONG"
-        elif signal == "SELL":
-            signal = "SHORT"
+        if signal == "BUY": signal = "LONG"
+        elif signal == "SELL": signal = "SHORT"
 
         if signal not in ["LONG", "SHORT"]:
             logging.info(f"🚫 Ignored signal: {signal}")
@@ -212,7 +201,6 @@ def webhook():
         if not kite and not PAPER_TRADING:
             return jsonify({"status": "❌ Kite client init failed"}), 500
 
-        auto_rollover_positions(kite, cleaned_symbol)
         handle_trade_decision(kite, cleaned_symbol, signal)
 
         return jsonify({"status": "✅ Webhook processed"})
